@@ -9,5 +9,4 @@ urlpatterns = [
     path('verify_reset_otp/', views.verify_reset_otp_view, name='verify_reset_otp'),
     path('change_password/', views.change_password_view, name='change_password'),
     path('logout/', views.logout_view, name='logout'),
-    # path('send-email/', views.send_email, name='send_email'),
 ]

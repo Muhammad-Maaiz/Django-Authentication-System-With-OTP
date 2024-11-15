@@ -1,37 +1,9 @@
-{% comment %} <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SignUp</title>
-</head>
-<body>
-  
-    <form method="post">
-        {% csrf_token %}
-        <h1>SignUp</h1>
-        <!-- Display error messages if there are any -->
-        {% if error %}
-            <p style="color: red;">{{ error }}</p>
-        {% endif %}
-        <input type="text" name="username" placeholder="Username" required>
-        <br><br>
-        <input type="email" name="email" placeholder="Email" required>
-        <br><br>
-        <input type="password" name="password" placeholder="Password" required>
-        <br><br>
-        <button type="submit">Sign Up</button>
-        <br>
-        <p>Already have an account?<a href="{% url 'login' %}">Login</a></p>
-    </form>
-</body>
-</html> {% endcomment %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign Up</title>
+    <title>SignUp</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -96,7 +68,7 @@
   
     <form method="post">
         {% csrf_token %}
-        <h1>Sign Up</h1>
+        <h1>SignUp</h1>
         
         {% if error %}
             <div class="error">{{ error }}</div>
