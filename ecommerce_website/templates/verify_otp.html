@@ -26,17 +26,17 @@
             color: #333333;
             margin-bottom: 10px;
         }
-        p {
-            color: #555555;
+        .error, .info {
+            color: #ffffff;
+            padding: 10px;
+            border-radius: 5px;
             margin-bottom: 15px;
         }
         .error {
-            color: red;
-            background-color: #f8d7da;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid red;
-            margin-bottom: 15px;
+            background-color: #d9534f;
+        }
+        .info {
+            background-color: #5bc0de;
         }
         .otp-container {
             display: flex;
@@ -65,10 +65,9 @@
         button:hover {
             background-color: #45a049;
         }
-        a {
-            color: #4CAF50;
-            text-decoration: none;
-            font-weight: bold;
+        .timer {
+            font-size: 16px;
+            color: #555555;
         }
     </style>
 </head>
@@ -76,29 +75,30 @@
     <form method="post">
         {% csrf_token %}
         <h1>OTP Verification</h1>
-        <p>Please check your email for the OTP and enter it below to verify your account.</p>
-        
+        <p>Please check your email for the OTP and enter it below.</p>
+
         {% if error %}
             <p class="error">{{ error }}</p>
         {% endif %}
-        
-        <div class="otp-container">
-            <input type="text" name="otp1" class="otp-input" maxlength="1" required oninput="moveToNext(this, 'otp2')">
-            <input type="text" name="otp2" class="otp-input" maxlength="1" required oninput="moveToNext(this, 'otp3')">
-            <input type="text" name="otp3" class="otp-input" maxlength="1" required oninput="moveToNext(this, 'otp4')">
-            <input type="text" name="otp4" class="otp-input" maxlength="1" required oninput="moveToNext(this, 'otp5')">
-            <input type="text" name="otp5" class="otp-input" maxlength="1" required oninput="moveToNext(this, 'otp6')">
-            <input type="text" name="otp6" class="otp-input" maxlength="1" required>
-        </div>
-        
-        <button type="submit">Verify OTP</button>
-
-        {% if error == "OTP is expired. Please sign up again." %}
-            <p><a href="{% url 'signup' %}">Go Back to SignUp</a></p>
-        {% elif error == "OTP is expired. Please request a new one." %}
-            <p><a href="{% url 'forget_password' %}">Request a New OTP</a></p>
+        {% if info %}
+            <p class="info">{{ info }}</p>
         {% endif %}
-        
+
+        <div class="otp-container">
+            <input type="text" name="otp1" class="otp-input" maxlength="1" id="otp1" {% if remaining_time > 0 %} required {% endif %} oninput="moveToNext(this, 'otp2')">
+            <input type="text" name="otp2" class="otp-input" maxlength="1" id="otp2" {% if remaining_time > 0 %} required {% endif %} oninput="moveToNext(this, 'otp3')">
+            <input type="text" name="otp3" class="otp-input" maxlength="1" id="otp3" {% if remaining_time > 0 %} required {% endif %} oninput="moveToNext(this, 'otp4')">
+            <input type="text" name="otp4" class="otp-input" maxlength="1" id="otp4" {% if remaining_time > 0 %} required {% endif %} oninput="moveToNext(this, 'otp5')">
+            <input type="text" name="otp5" class="otp-input" maxlength="1" id="otp5" {% if remaining_time > 0 %} required {% endif %} oninput="moveToNext(this, 'otp6')">
+            <input type="text" name="otp6" class="otp-input" maxlength="1" id="otp6" {% if remaining_time > 0 %} required {% endif %}>
+        </div>
+
+        {% if remaining_time > 0 %}
+            <p class="timer">Time remaining: <span id="timer">{{ remaining_time }}</span> seconds</p>
+            <button type="submit">Verify OTP</button>
+        {% else %}
+            <button type="submit" name="resend_otp">Resend OTP</button>
+        {% endif %}
     </form>
 
     <script>
@@ -106,6 +106,20 @@
             if (current.value.length >= 1) {
                 document.getElementsByName(nextFieldId)[0].focus();
             }
+        }
+
+        let timerElement = document.getElementById('timer');
+        if (timerElement) {
+            let remainingTime = parseInt(timerElement.textContent, 10);
+            let interval = setInterval(() => {
+                if (remainingTime <= 1) {
+                    clearInterval(interval);
+                    location.reload();
+                } else {
+                    remainingTime--;
+                    timerElement.textContent = remainingTime;
+                }
+            }, 1000);
         }
     </script>
 </body>

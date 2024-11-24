@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from authentication.models import OTP
 from authentication.utils import generate_otp, send_otp_to_users
 from datetime import datetime, timedelta
+from django.utils.timezone import now, make_aware, is_naive
 
 
 # Create Account or Signup View
@@ -43,7 +44,7 @@ def signup_view(request):
 
         OTP Code: {otp_code}
 
-        This OTP is valid for the next 1 minutes. If you did not initiate this request, please disregard this email.
+        This OTP is valid for the next 2 minutes. If you did not initiate this request, please disregard this email.
 
         Best regards,
         Maaiz.com Support Team
@@ -55,10 +56,44 @@ def signup_view(request):
     return render(request, 'signup.html')
 
 
-# OTP verification view
 def verify_otp_view(request):
+    # Retrieve temporary user data from session
+    temp_user_data = request.session.get('temp_user_data')
+
+    if not temp_user_data:
+        return redirect('signup')  # Redirect to signup if no session data exists
+
+    otp_timestamp = temp_user_data['otp_timestamp']
+    otp_timestamp = datetime.fromisoformat(otp_timestamp)
+
+    # Ensure `otp_timestamp` is timezone-aware
+    if is_naive(otp_timestamp):
+        otp_timestamp = make_aware(otp_timestamp)
+
+    # Calculate remaining time
+    remaining_time = max(0, (otp_timestamp + timedelta(minutes=2) - now()).total_seconds())
+
     if request.method == 'POST':
-        # Combine the values of each OTP input field
+        if 'resend_otp' in request.POST:
+            # Generate and send a new OTP
+            new_otp = generate_otp()
+            temp_user_data['otp_code'] = new_otp
+            temp_user_data['otp_timestamp'] = now().isoformat()
+            request.session['temp_user_data'] = temp_user_data  # Update session data
+
+            # Send the OTP via email
+            email = temp_user_data['email']
+            title = "Your New OTP Code"
+            message = f"Your new OTP code is {new_otp}. It is valid for 2 minutes."
+            send_otp_to_users(title, message, email)
+
+            return render(request, 'verify_otp.html', {
+                'info': 'A new OTP has been sent to your email.',
+                'remaining_time': 120,  # Reset timer to 2 minutes
+                'show_resend': False
+            })
+
+        # Combine OTP inputs into a single string
         otp_code = (
             request.POST.get('otp1', '') +
             request.POST.get('otp2', '') +
@@ -68,33 +103,37 @@ def verify_otp_view(request):
             request.POST.get('otp6', '')
         )
 
-        # Retrieve temporary user data from session
-        temp_user_data = request.session.get('temp_user_data')
-        if not temp_user_data:
-            return redirect('signup')  # Redirect to signup if session data is missing
+        # Handle OTP expiration
+        if remaining_time <= 0:
+            return render(request, 'verify_otp.html', {
+                'error': 'OTP expired. Please resend a new OTP.',
+                'remaining_time': 0,
+                'show_resend': True  # Show the "Resend OTP" button
+            })
 
-        # Check if the OTP is expired
-        otp_timestamp = datetime.fromisoformat(temp_user_data['otp_timestamp'])
-        if datetime.now() > otp_timestamp + timedelta(minutes=1):
-            del request.session['temp_user_data']  # Clear session data if OTP is expired
-            return render(request, 'verify_otp.html', {'error': 'OTP is expired. Please sign up again.'})
+        # Handle invalid OTP
+        if otp_code != temp_user_data['otp_code']:
+            return render(request, 'verify_otp.html', {
+                'error': 'Invalid OTP. Please try again.',
+                'remaining_time': int(remaining_time),
+            })
 
-        # Check if the entered OTP matches the one stored in session
-        if otp_code == temp_user_data['otp_code']:
-            # Create the User and OTP entries only after OTP is verified
-            user = User.objects.create_user(
-                username=temp_user_data['username'],
-                email=temp_user_data['email'],
-                password=temp_user_data['password']
-            )
-            OTP.objects.create(user=user, otp_code=temp_user_data['otp_code'])
-            
-            # Clear session data after successful verification
-            del request.session['temp_user_data']
-            return redirect('login')  # Redirect to login page
-        else:
-            return render(request, 'verify_otp.html', {'error': 'Invalid OTP'})
-    return render(request, 'verify_otp.html')
+        # OTP verification successful
+        user = User.objects.create_user(
+            username=temp_user_data['username'],
+            email=temp_user_data['email'],
+            password=temp_user_data['password']
+        )
+        OTP.objects.create(user=user, otp_code=temp_user_data['otp_code'])
+        del request.session['temp_user_data']  # Clear session data
+        return redirect('login')
+
+    # Render the OTP verification page with timer
+    return render(request, 'verify_otp.html', {
+        'remaining_time': int(remaining_time),
+        'show_resend': remaining_time == 0  # Show "Resend OTP" button if time is up
+    })
+
 
 # Login View
 def login_view(request):
@@ -143,7 +182,7 @@ def forget_password_view(request):
 
         OTP Code: {otp_code}
 
-        This OTP is valid for the next 1 minutes. If you did not request this, please ignore this email.
+        This OTP is valid for the next 2 minutes. If you did not request this, please ignore this email.
 
         Best regards,
         Maaiz.com Support Team
@@ -161,16 +200,51 @@ def forget_password_view(request):
 
 # OTP Verification for Password Reset
 def verify_reset_otp_view(request):
+    # Retrieve user data from session
+    reset_user_data = request.session.get('reset_user_data')
+    if not reset_user_data:
+        return redirect('forget_password')  # Redirect if session data is missing
+
+    user_id = reset_user_data['user_id']
+    otp_timestamp = datetime.fromisoformat(reset_user_data['otp_timestamp'])
+
+    # Ensure OTP timestamp is timezone-aware
+    if is_naive(otp_timestamp):
+        otp_timestamp = make_aware(otp_timestamp)
+
+    # Calculate remaining time
+    remaining_time = max(0, (otp_timestamp + timedelta(minutes=2) - now()).total_seconds())
+
     if request.method == 'POST':
-        # Retrieve user data from session
-        reset_user_data = request.session.get('reset_user_data')
-        if not reset_user_data:
-            return redirect('forget_password')  # Redirect if session data is missing
+        if 'resend_otp' in request.POST:
+            # Generate and send a new OTP
+            new_otp = generate_otp()
+            reset_user_data['otp_timestamp'] = now().isoformat()
+            request.session['reset_user_data'] = reset_user_data  # Update session data
 
-        user_id = reset_user_data['user_id']
-        otp_timestamp = datetime.fromisoformat(reset_user_data['otp_timestamp'])
+            # Update OTP in database
+            user = User.objects.get(id=user_id)
+            OTP.objects.update_or_create(user=user, defaults={'otp_code': new_otp})
 
-        # Combine the values of each OTP input field
+            # Send OTP via email
+            title = 'Password Reset OTP for Maaiz.com'
+            message = f"""
+            Dear {user.username},
+
+            Your new OTP code is {new_otp}. It is valid for 2 minutes.
+
+            Best regards,
+            Maaiz.com Support Team
+            """
+            send_otp_to_users(title, message, user.email)
+
+            return render(request, 'verify_otp.html', {
+                'info': 'A new OTP has been sent to your email.',
+                'remaining_time': 120,  # Reset timer to 2 minutes
+                'show_resend': False
+            })
+
+        # Combine OTP inputs into a single string
         otp_code = (
             request.POST.get('otp1', '') +
             request.POST.get('otp2', '') +
@@ -180,20 +254,33 @@ def verify_reset_otp_view(request):
             request.POST.get('otp6', '')
         )
 
-        # Check if the OTP is expired
-        if datetime.now() > otp_timestamp + timedelta(minutes=1):
-            del request.session['reset_user_data']  # Clear session data
-            return render(request, 'verify_otp.html', {'error': 'OTP is expired. Please request a new one.'})
+        # Handle OTP expiration
+        if remaining_time <= 0:
+            return render(request, 'verify_otp.html', {
+                'error': 'OTP expired. Please resend a new OTP.',
+                'remaining_time': 0,
+                'show_resend': True  # Show "Resend OTP" button
+            })
 
+        # Handle invalid OTP
         try:
             otp = OTP.objects.get(user_id=user_id, otp_code=otp_code)
             otp.delete()  # OTP matched, delete it
             request.session['reset_user_id'] = user_id  # Set reset_user_id in session
-            del request.session['reset_user_data']  # Clear other session data after successful verification
+            del request.session['reset_user_data']  # Clear other session data
             return redirect('change_password')  # Redirect to password reset page
         except OTP.DoesNotExist:
-            return render(request, 'verify_otp.html', {'error': 'Invalid OTP'})
-    return render(request, 'verify_otp.html')
+            return render(request, 'verify_otp.html', {
+                'error': 'Invalid OTP. Please try again.',
+                'remaining_time': int(remaining_time),
+            })
+
+    # Render the OTP verification page with timer
+    return render(request, 'verify_otp.html', {
+        'remaining_time': int(remaining_time),
+        'show_resend': remaining_time == 0  # Show "Resend OTP" button if time is up
+    })
+
 
 # Password Reset View
 def change_password_view(request):
